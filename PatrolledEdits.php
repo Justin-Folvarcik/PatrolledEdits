@@ -8,96 +8,80 @@ if (!defined('MEDIAWIKI')) die();
  * @addtogroup Extensions
  *
  * @author Justin Folvarcik (jfolvarcik@gmail.com)
- * @copyright Copyright © 2014, Justin Folvarcik
+ * @copyright Copyright 2014, Justin Folvarcik
  * @license http://www.gnu.org/copyleft/gpl.html GNU General Public License 2.0 or later
  */
 $wgExtensionCredits['parserhook'][] = array(
-	'name' => 'Patrolled Edits',
-	'author' => '[http://zeldawiki.org/User:Justin Justin Folvarcik]',
-	'description' => 'Adds a {{#pe}} parser function for displaying the number of edits a user has patrolled.',
-	'url' => 'http://zeldawiki.org/User_talk:Justin',
+    'path' => __FILE__,
+    'name' => 'Patrolled Edits',
+    'author' => '[http://zeldawiki.org/User:Justin Justin Folvarcik]',
+    'description' => 'Adds a {{#pe}} parser function for displaying the number of edits a user has patrolled.',
+    'url' => 'http://zeldawiki.org/User_talk:Justin',
 );
 
-# Define a setup function
+// Define a setup function
 $wgHooks['ParserFirstCallInit'][] = 'PatrolledEdits_Setup';
-# Add a hook to initialise the magic word
+// Add a hook to initialise the magic word
 $wgHooks['LanguageGetMagic'][]    = 'PatrolledEdits_Magic';
 
-$dir = dirname(__FILE__) . '/';
- 
-function PatrolledEdits_Setup( &$parser ) {
-	# Set a function hook associating the "pe" magic word with our function
-	$parser->setFunctionHook( 'pe', 'PatrolledEdits_Render' );
-	return true;
+/**
+ * Setup function for the parser hook
+ * Associates {{#pe}} with the function
+ * @param Parser $parser
+ * @return bool
+ */
+function PatrolledEdits_Setup( Parser &$parser ) {
+    $parser->setFunctionHook( 'pe', 'PatrolledEdits_Render' );
+    return true;
 }
- 
-function PatrolledEdits_Magic( &$magicWords, $langCode ) {
-        # Add the magic word
-        # The first array element is whether to be case sensitive, in this case (0) it is not case sensitive, 1 would be sensitive
-        # All remaining elements are synonyms for our parser function
-        $magicWords['pe'] = array( 0, 'pe', 'patrollededits' );
-        # unless we return true, other parser functions extensions won't get loaded.
-        return true;
+
+/**
+ * Add the magic word and define some settings for it
+ * @param $magicWords
+ * @return bool
+ */
+function PatrolledEdits_Magic( &$magicWords ) {
+    // The first array element is whether to be case sensitive, in this case (0) it is not case sensitive, 1 would be sensitive
+    // All remaining elements are synonyms for the magic word
+    $magicWords['pe'] = array( 0, 'pe', 'patrollededits' );
+    // Unless this returns true, extension loading for the parser hooks will end here
+    return true;
 }
- 
-function PatrolledEdits_Render( $parser, $param1 = '', $param2 = '', $param3 = '' ) {
-        # The parser function itself
-        # The input parameters are wikitext with templates expanded
-        # The output should be wikitext too
-        $dbw = wfGetDB(DB_SLAVE);
-        if ($param1==null)
+
+function PatrolledEdits_Render( $parser, $user = '', $type = '', $namespace = '' ) {
+    // The parser function itself
+    // The input parameters are wikitext with templates expanded
+    // The output should be wikitext too
+
+    // If they didn't define a user, we can't do anything. Bail out now.
+    if ($user==null)
         return false;
-        else
-        {
-        $param1 = mysql_real_escape_string($param1);
-		@$id = User::idFromName($param1);
-		if (isset($param3) && is_numeric($param3))
-		{
-			$param3++;
-			$ns = mysql_real_escape_string($param3);
-		}
-		else
-		$ns=null;
-        //TODO: COUNT(*) queries instead of... this abomination.
-		if ($param2 == 'patrol')
-		{
-		if ($ns == null)
-		{
-		$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' AND RIGHT(`log_params`, 1) = '0'", 'Database::query');
-		}
-		else
-		{
-		$ns--;
-		$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' AND RIGHT(`log_params`, 1) = '0' AND `log_namespace` = '{$ns}'", 'Database::query');
-		}
-		}
-		elseif ($param2 == 'auto')
-		{
-		if ($ns == null)
-		$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' AND RIGHT(`log_params`, 1) = '1'", __METHOD__);
-		else
-		{
-		$ns--;
-		$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' AND RIGHT(`log_params`, 1) = '1' AND `log_namespace` = '{$ns}'", __METHOD__);
-		}
-		}
-		else
-		{
-			if ($ns == null)
-			{
-			$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol'", __METHOD__);
-			}
-			else
-			{
-			$ns--;
-			$res = $dbr->query("SELECT * FROM ".$dbr->tableName('logging')." WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' AND `log_namespace` = '{$ns}'", __METHOD__);
-			}
-		}
-		$i=0;
-		foreach ($res as $row)
-		$i++;
-		$output = $i;
-        return $output;
-	}
-	}
-?>
+    // First, grab an instance of a DB object
+    $dbr = wfGetDB(DB_SLAVE);
+    // Store the table name as a constant
+    define('PatrolledEdits_log', $dbr->tableName('logging'));
+    // Start building the base query
+    $id = User::idFromName($user);
+    $query = "SELECT COUNT(*) as count FROM " . PatrolledEdits_log . " WHERE `log_user` = '{$id}' AND `log_type` = 'patrol' ";
+    // Escape the input just to be safe, and then get the user's ID
+    $user = mysql_real_escape_string($user);
+    // If they've declared a specific namespace, escape it and append it to the query
+    if ($namespace && is_integer($namespace))
+    {
+        wfShorthandToInteger($namespace);
+        $ns = mysql_real_escape_string($namespace);
+        $ns--;
+        $query .= "AND `log_namespace` = {$ns} ";
+    }
+    if ($type == 'patrol')
+    {
+        $query .= "AND LEFT(RIGHT(`log_params`, 3), 1) = '0' ";
+    }
+    elseif ($type == 'auto')
+    {
+        $query .= "AND LEFT(RIGHT(`log_params`, 3), 1) = '1'";
+    }
+
+    $result = $dbr->query($query, __METHOD__);
+    return $result->current()->count;
+}
