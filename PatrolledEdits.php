@@ -68,9 +68,7 @@ function PatrolledEdits_Render( $parser, $user = '', $type = '', $namespace = ''
     // If they've declared a specific namespace, escape it and append it to the query
     if ($namespace && is_integer($namespace))
     {
-        wfShorthandToInteger($namespace);
         $ns = mysql_real_escape_string($namespace);
-        $ns--;
         $query .= "AND `log_namespace` = {$ns} ";
     }
     if ($type == 'patrol')
