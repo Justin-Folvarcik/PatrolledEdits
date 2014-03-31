@@ -12,12 +12,12 @@ $wgHooks['ParserFirstCallInit'][] = 'PatrolledNSMagic_Setup';
 // Magic word.
 $wgHooks['LanguageGetMagic'][]       = 'PatrolledNSMagic_Magic';
 
-function PatrolledNSMagic_Setup( &$parser ) {
+function PatrolledNSMagic_Setup( Parser &$parser ) {
 
 	$parser->setFunctionHook( 'patrolnsmagic', 'PatrolledNSMagic_Render', SFH_NO_HASH );
 	return true;
 }
- 
+
 function PatrolledNSMagic_Magic( &$magicWords, $langCode ) {
         # Add the magic word
         # The first array element is whether to be case sensitive, in this case (0) it is not case sensitive, 1 would be sensitive
